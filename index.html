@@ -1,0 +1,833 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+
+    <meta name="theme-color" content="#000000">
+
+    <meta name="mobile-web-app-capable" content="yes">
+
+    <meta name="apple-mobile-web-app-capable" content="yes">
+
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+    <title>Magic Hand Engine</title>
+
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+
+    <style>
+        * {
+
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+
+        }
+
+        html,
+        body {
+
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: black;
+            font-family: Arial;
+
+        }
+
+        canvas {
+
+            position: fixed;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+
+        }
+
+        video {
+
+            position: fixed;
+
+            right: 20px;
+
+            bottom: 20px;
+
+            width: 220px;
+
+            border-radius: 18px;
+
+            border: 3px solid cyan;
+
+            box-shadow:
+
+                0 0 40px cyan;
+
+            transform: scaleX(-1);
+
+            object-fit: cover;
+
+            z-index: 50;
+
+        }
+
+        @media(max-width:768px) {
+
+            video {
+
+                width: 120px;
+
+                right: 10px;
+
+                bottom: 10px;
+
+            }
+
+        }
+
+        #loading {
+
+            position: fixed;
+
+            left: 0;
+            top: 0;
+
+            width: 100%;
+            height: 100%;
+
+            display: flex;
+
+            justify-content: center;
+
+            align-items: center;
+
+            background: black;
+
+            color: white;
+
+            font-size: 30px;
+
+            z-index: 999;
+
+        }
+
+        #hud {
+
+            position: fixed;
+
+            top: 20px;
+
+            left: 20px;
+
+            display: flex;
+
+            gap: 15px;
+
+            z-index: 100;
+
+        }
+
+        .card {
+
+            background: rgba(0, 0, 0, .45);
+
+            backdrop-filter: blur(18px);
+
+            padding: 15px 22px;
+
+            border-radius: 15px;
+
+            color: white;
+
+            border: 1px solid rgba(255, 255, 255, .2);
+
+            min-width: 140px;
+
+        }
+
+        .title {
+
+            font-size: 12px;
+
+            opacity: .6;
+
+            margin-bottom: 6px;
+
+        }
+
+        .value {
+
+            font-size: 24px;
+
+            font-weight: bold;
+
+        }
+
+        #cameraPanel {
+
+            position: fixed;
+
+            left: 50%;
+
+            top: 50%;
+
+            transform: translate(-50%, -50%);
+
+            width: 340px;
+
+            max-width: 90%;
+
+            padding: 25px;
+
+            border-radius: 20px;
+
+            background: rgba(0, 0, 0, .8);
+
+            backdrop-filter: blur(20px);
+
+            text-align: center;
+
+            color: white;
+
+            z-index: 99999;
+
+            box-shadow: 0 0 40px cyan;
+
+        }
+
+        #cameraPanel h2 {
+
+            margin-bottom: 15px;
+
+        }
+
+        #cameraPanel p {
+
+            margin-bottom: 20px;
+
+            font-size: 15px;
+
+            opacity: .8;
+
+        }
+
+        #cameraPanel button {
+
+            width: 100%;
+
+            padding: 15px;
+
+            margin-top: 10px;
+
+            border: none;
+
+            border-radius: 12px;
+
+            font-size: 18px;
+
+            cursor: pointer;
+
+            background: cyan;
+
+            color: black;
+
+            font-weight: bold;
+
+        }
+
+        #cameraPanel button:hover {
+
+            background: white;
+
+        }
+    </style>
+
+</head>
+
+<body>
+
+    <div id="loading">
+
+        Loading Camera...
+
+    </div>
+
+    <div id="hud">
+
+        <div class="card">
+
+            <div class="title">
+
+                Gesture
+
+            </div>
+
+            <div class="value" id="gesture">
+
+                Searching...
+
+            </div>
+
+        </div>
+
+        <div class="card">
+
+            <div class="title">
+
+                Effect
+
+            </div>
+
+            <div class="value" id="effect">
+
+                None
+
+            </div>
+
+        </div>
+
+        <div class="card">
+
+            <div class="title">
+
+                FPS
+
+            </div>
+
+            <div class="value" id="fps">
+
+                60
+
+            </div>
+
+        </div>
+
+    </div>
+
+    <div id="cameraPanel">
+
+        <h2>📷 Camera Required</h2>
+
+        <p id="cameraStatus">
+
+            Press Start Camera
+
+        </p>
+
+        <button id="startBtn">
+
+            Start Camera
+
+        </button>
+
+        <button id="retryBtn">
+
+            Retry
+
+        </button>
+
+    </div>
+
+    <canvas id="canvas"></canvas>
+
+    <video id="video" autoplay playsinline muted>
+    </video>
+
+    <script>
+
+        const canvas = document.getElementById("canvas");
+
+        const ctx = canvas.getContext("2d");
+
+        const video = document.getElementById("video");
+
+        const loading = document.getElementById("loading");
+
+        const gesture = document.getElementById("gesture");
+
+        const effect = document.getElementById("effect");
+        let currentGesture = "";
+        let currentEffect = "";
+        let glow = 20;
+
+        let targetGlow = 20;
+
+        const fps = document.getElementById("fps");
+
+        function resize() {
+
+            canvas.width = innerWidth;
+
+            canvas.height = innerHeight;
+
+        }
+
+        window.onresize = resize;
+
+        resize();
+
+        let frame = 0;
+
+        let last = performance.now();
+
+        function fpsLoop() {
+
+            frame++;
+
+            let now = performance.now();
+
+            if (now - last > 1000) {
+
+                fps.innerHTML = frame;
+
+                frame = 0;
+
+                last = now;
+
+            }
+
+            requestAnimationFrame(fpsLoop);
+
+        }
+
+        fpsLoop();
+
+        const hands = new Hands({
+
+            locateFile: file =>
+
+                "https://cdn.jsdelivr.net/npm/@mediapipe/hands/" + file
+
+        });
+
+        hands.setOptions({
+
+            maxNumHands: 1,
+
+            modelComplexity: 1,
+
+            minDetectionConfidence: .7,
+
+            minTrackingConfidence: .7
+
+        });
+
+        function fingerUp(tip, pip, lm) {
+
+            return lm[tip].y < lm[pip].y;
+
+        }
+
+        function detectGesture(lm) {
+
+            const index = fingerUp(8, 6, lm);
+
+            const middle = fingerUp(12, 10, lm);
+
+            const ring = fingerUp(16, 14, lm);
+
+            const pinky = fingerUp(20, 18, lm);
+
+            const thumb = lm[4].x < lm[3].x;
+
+            // OPEN
+
+            if (index && middle && ring && pinky) {
+
+                currentGesture = "OPEN";
+
+                currentEffect = "Fairy Dust";
+
+            }
+
+            // FIST
+
+            else if (!index && !middle && !ring && !pinky) {
+
+                currentGesture = "FIST";
+
+                currentEffect = "Fire";
+
+            }
+
+            // VICTORY
+
+            else if (index && middle && !ring && !pinky) {
+
+                currentGesture = "VICTORY";
+
+                currentEffect = "Rainbow";
+
+            }
+
+            // POINT
+
+            else if (index && !middle && !ring && !pinky) {
+
+                currentGesture = "POINT";
+
+                currentEffect = "Lightning";
+
+            }
+
+            // THUMBS UP
+
+            else if (
+                thumb &&
+                !index &&
+                !middle &&
+                !ring &&
+                !pinky
+            ) {
+
+                currentGesture = "THUMB";
+
+                currentEffect = "Golden Stars";
+
+            }
+
+            // OK
+
+            else if (
+
+                Math.abs(lm[4].x - lm[8].x) < 0.05 &&
+                Math.abs(lm[4].y - lm[8].y) < 0.05
+
+            ) {
+
+                currentGesture = "OK";
+
+                currentEffect = "Green Aura";
+
+            }
+
+            // PINCH
+
+            else if (
+
+                Math.abs(lm[4].x - lm[8].x) < 0.08 &&
+                Math.abs(lm[4].y - lm[8].y) < 0.08
+
+            ) {
+
+                currentGesture = "PINCH";
+
+                currentEffect = "Crystal Burst";
+
+            }
+
+            else {
+
+                currentGesture = "UNKNOWN";
+
+                currentEffect = "None";
+
+            }
+
+            gesture.innerHTML = currentGesture;
+
+            effect.innerHTML = currentEffect;
+
+        }
+
+        hands.onResults(results => {
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            if (results.multiHandLandmarks.length) {
+
+                hands.onResults(results => {
+
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                    if (!results.multiHandLandmarks.length) return;
+
+                    const lm = results.multiHandLandmarks[0];
+
+                    detectGesture(lm);
+
+                    switch (currentGesture) {
+
+                        case "OPEN":
+
+                            targetGlow = 40;
+
+                            break;
+
+                        case "FIST":
+
+                            targetGlow = 90;
+
+                            break;
+
+                        case "VICTORY":
+
+                            targetGlow = 70;
+
+                            break;
+
+                        case "POINT":
+
+                            targetGlow = 120;
+
+                            break;
+
+                        case "THUMB":
+
+                            targetGlow = 60;
+
+                            break;
+
+                        case "OK":
+
+                            targetGlow = 80;
+
+                            break;
+
+                        case "PINCH":
+
+                            targetGlow = 100;
+
+                            break;
+
+                    }
+
+
+                    const x = (1 - lm[8].x) * canvas.width;
+
+                    const y = lm[8].y * canvas.height;
+
+                    ctx.beginPath();
+
+                    ctx.arc(x, y, 20, 0, Math.PI * 2);
+
+                    ctx.fillStyle = "cyan";
+
+                    glow += (targetGlow - glow) * 0.15;
+
+                    ctx.shadowBlur = glow;
+
+                    ctx.shadowColor = "cyan";
+
+                    ctx.fill();
+
+                });
+
+                const x = (1 - lm.x) * canvas.width;
+
+                const y = lm.y * canvas.height;
+
+                ctx.beginPath();
+
+                ctx.arc(x, y, 18, 0, Math.PI * 2);
+
+                let color = "cyan";
+
+                switch (currentGesture) {
+
+                    case "OPEN":
+
+                        color = "#00ffff";
+
+                        break;
+
+                    case "FIST":
+
+                        color = "#ff3300";
+
+                        break;
+
+                    case "THUMB":
+
+                        color = "#FFD700";
+
+                        break;
+
+                    case "OK":
+
+                        color = "#00FF66";
+
+                        break;
+
+                    case "PINCH":
+
+                        color = "#66CCFF";
+
+                        break;
+
+                    case "VICTORY":
+
+                        color = "#ff00ff";
+
+                        break;
+
+                    case "POINT":
+
+                        color = "#ffff00";
+
+                        break;
+
+                    default:
+
+                        color = "#ffffff";
+
+                }
+
+                ctx.fillStyle = color;
+
+                ctx.shadowColor = color;
+
+                ctx.shadowBlur = 40;
+
+                ctx.shadowColor = "cyan";
+
+                ctx.fill();
+
+                gesture.innerHTML = "Hand";
+
+                effect.innerHTML = "Basic";
+
+            }
+
+        });
+
+        async function start(){
+
+status.innerHTML="Checking Device...";
+
+if(!navigator.mediaDevices){
+
+status.innerHTML="❌ Browser doesn't support Camera.";
+
+return;
+
+}
+
+if(location.protocol!=="https:" && location.hostname!=="localhost"){
+
+status.innerHTML=
+
+"⚠ HTTPS Required.<br><br>Use GitHub Pages, Netlify or Localhost.";
+
+return;
+
+}
+
+try{
+
+status.innerHTML="Requesting Camera Permission...";
+
+const stream=await navigator.mediaDevices.getUserMedia({
+
+video:{
+
+facingMode:"user",
+
+width:{ideal:1280},
+
+height:{ideal:720}
+
+},
+
+audio:false
+
+});
+
+video.srcObject=stream;
+
+await video.play();
+
+const camera=new Camera(video,{
+
+onFrame:async()=>{
+
+await hands.send({
+
+image:video
+
+});
+
+},
+
+width:1280,
+
+height:720
+
+});
+
+camera.start();
+
+panel.style.display="none";
+
+loading.style.display="none";
+
+}catch(err){
+
+console.log(err);
+
+switch(err.name){
+
+case "NotAllowedError":
+
+status.innerHTML="❌ Camera Permission Denied";
+
+break;
+
+case "NotFoundError":
+
+status.innerHTML="❌ Camera Not Found";
+
+break;
+
+case "NotReadableError":
+
+status.innerHTML="❌ Camera Busy";
+
+break;
+
+case "SecurityError":
+
+status.innerHTML="❌ HTTPS Required";
+
+break;
+
+default:
+
+status.innerHTML="❌ "+err.name;
+
+}
+
+}
+}
+        const panel = document.getElementById("cameraPanel");
+
+        const status = document.getElementById("cameraStatus");
+
+        const startBtn = document.getElementById("startBtn");
+
+        const retryBtn = document.getElementById("retryBtn");
+
+        startBtn.onclick = start;
+
+        retryBtn.onclick = start;
+        document.body.onclick = () => {
+
+            if (document.documentElement.requestFullscreen) {
+
+                document.documentElement.requestFullscreen();
+
+            }
+
+        };
+
+    </script>
+
+</body>
+
+</html>
